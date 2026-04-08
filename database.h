@@ -73,7 +73,7 @@ private:
     QSqlDatabase db;
     QString lastError;
 
-    void createTables();
+    bool createTables();
 };
 
 #endif // DATABASE_H

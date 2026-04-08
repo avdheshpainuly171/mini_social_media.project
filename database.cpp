@@ -12,7 +12,7 @@ Database& Database::instance() {
 }
 
 bool Database::initDatabase() {
-    db = QSqlDatabase::addDatabase("QSQLITE");
+    db = QSqlDatabase::addDatabase("QSQLITE", "social_media_connection");
     db.setDatabaseName("socialchat.db");
 
     if (!db.open()) {
@@ -21,65 +21,86 @@ bool Database::initDatabase() {
         return false;
     }
 
-    createTables();
+    if (!createTables()) {
+        closeDatabase();
+        return false;
+    }
+
     qDebug() << "Database initialized successfully!";
     return true;
 }
 
-void Database::createTables() {
+bool Database::createTables() {
     QSqlQuery query;
 
+    auto execOrSetError = [this, &query](const QString& sql) -> bool {
+        if (!query.exec(sql)) {
+            lastError = "Database setup failed: " + query.lastError().text();
+            qDebug() << lastError;
+            return false;
+        }
+        return true;
+    };
+
+    if (!execOrSetError("PRAGMA foreign_keys = ON")) return false;
+
     // Users table
-    query.exec("CREATE TABLE IF NOT EXISTS users ("
-               "user_id INTEGER PRIMARY KEY AUTOINCREMENT, "
-               "username TEXT UNIQUE NOT NULL, "
-               "password TEXT NOT NULL, "
-               "full_name TEXT NOT NULL, "
-               "created_at DATETIME DEFAULT CURRENT_TIMESTAMP)");
+    if (!execOrSetError("CREATE TABLE IF NOT EXISTS users ("
+                        "user_id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                        "username TEXT UNIQUE NOT NULL, "
+                        "password TEXT NOT NULL, "
+                        "full_name TEXT NOT NULL, "
+                        "created_at DATETIME DEFAULT CURRENT_TIMESTAMP)")) return false;
 
     // Friends table (adjacency list)
-    query.exec("CREATE TABLE IF NOT EXISTS friends ("
-               "friendship_id INTEGER PRIMARY KEY AUTOINCREMENT, "
-               "user_id INTEGER NOT NULL, "
-               "friend_id INTEGER NOT NULL, "
-               "created_at DATETIME DEFAULT CURRENT_TIMESTAMP, "
-               "UNIQUE(user_id, friend_id), "
-               "FOREIGN KEY(user_id) REFERENCES users(user_id) ON DELETE CASCADE, "
-               "FOREIGN KEY(friend_id) REFERENCES users(user_id) ON DELETE CASCADE)");
+    if (!execOrSetError("CREATE TABLE IF NOT EXISTS friends ("
+                        "friendship_id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                        "user_id INTEGER NOT NULL, "
+                        "friend_id INTEGER NOT NULL, "
+                        "created_at DATETIME DEFAULT CURRENT_TIMESTAMP, "
+                        "UNIQUE(user_id, friend_id), "
+                        "FOREIGN KEY(user_id) REFERENCES users(user_id) ON DELETE CASCADE, "
+                        "FOREIGN KEY(friend_id) REFERENCES users(user_id) ON DELETE CASCADE)")) return false;
 
     // Friend requests
-    query.exec("CREATE TABLE IF NOT EXISTS friend_requests ("
-               "request_id INTEGER PRIMARY KEY AUTOINCREMENT, "
-               "sender_id INTEGER NOT NULL, "
-               "receiver_id INTEGER NOT NULL, "
-               "status TEXT DEFAULT 'pending', "
-               "created_at DATETIME DEFAULT CURRENT_TIMESTAMP, "
-               "UNIQUE(sender_id, receiver_id), "
-               "FOREIGN KEY(sender_id) REFERENCES users(user_id) ON DELETE CASCADE, "
-               "FOREIGN KEY(receiver_id) REFERENCES users(user_id) ON DELETE CASCADE)");
+    if (!execOrSetError("CREATE TABLE IF NOT EXISTS friend_requests ("
+                        "request_id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                        "sender_id INTEGER NOT NULL, "
+                        "receiver_id INTEGER NOT NULL, "
+                        "status TEXT DEFAULT 'pending', "
+                        "created_at DATETIME DEFAULT CURRENT_TIMESTAMP, "
+                        "UNIQUE(sender_id, receiver_id), "
+                        "FOREIGN KEY(sender_id) REFERENCES users(user_id) ON DELETE CASCADE, "
+                        "FOREIGN KEY(receiver_id) REFERENCES users(user_id) ON DELETE CASCADE)")) return false;
 
     // Messages table
-    query.exec("CREATE TABLE IF NOT EXISTS messages ("
-               "message_id INTEGER PRIMARY KEY AUTOINCREMENT, "
-               "sender_id INTEGER NOT NULL, "
-               "receiver_id INTEGER, "
-               "message_text TEXT NOT NULL, "
-               "is_public INTEGER DEFAULT 0, "
-               "created_at DATETIME DEFAULT CURRENT_TIMESTAMP, "
-               "FOREIGN KEY(sender_id) REFERENCES users(user_id) ON DELETE CASCADE, "
-               "FOREIGN KEY(receiver_id) REFERENCES users(user_id) ON DELETE CASCADE)");
+    if (!execOrSetError("CREATE TABLE IF NOT EXISTS messages ("
+                        "message_id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                        "sender_id INTEGER NOT NULL, "
+                        "receiver_id INTEGER, "
+                        "message_text TEXT NOT NULL, "
+                        "is_public INTEGER DEFAULT 0, "
+                        "created_at DATETIME DEFAULT CURRENT_TIMESTAMP, "
+                        "FOREIGN KEY(sender_id) REFERENCES users(user_id) ON DELETE CASCADE, "
+                        "FOREIGN KEY(receiver_id) REFERENCES users(user_id) ON DELETE CASCADE)")) return false;
 
     // Create indexes
-    query.exec("CREATE INDEX IF NOT EXISTS idx_friends_user ON friends(user_id)");
-    query.exec("CREATE INDEX IF NOT EXISTS idx_messages_sender ON messages(sender_id)");
-    query.exec("CREATE INDEX IF NOT EXISTS idx_messages_receiver ON messages(receiver_id)");
+    if (!execOrSetError("CREATE INDEX IF NOT EXISTS idx_friends_user ON friends(user_id)")) return false;
+    if (!execOrSetError("CREATE INDEX IF NOT EXISTS idx_messages_sender ON messages(sender_id)")) return false;
+    if (!execOrSetError("CREATE INDEX IF NOT EXISTS idx_messages_receiver ON messages(receiver_id)")) return false;
 
     qDebug() << "Tables created successfully!";
+    return true;
 }
 
 void Database::closeDatabase() {
+    QString connectionName = db.connectionName();
     if (db.isOpen()) {
         db.close();
+    }
+    db = QSqlDatabase();
+    if (!connectionName.isEmpty() && QSqlDatabase::contains(connectionName)) {
+        QSqlDatabase::removeDatabase(connectionName);
     }
 }
 

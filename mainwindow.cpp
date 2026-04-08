@@ -33,10 +33,17 @@ void MainWindow::loadUserData() {
     currentUser = Database::instance().getUserById(currentUserId);
     if (currentUser) {
         setWindowTitle("Social Chat - " + currentUser->getFullName());
+    } else {
+        setWindowTitle("Social Chat");
+        QMessageBox::critical(this, "User Error", "Failed to load current user data.");
     }
 }
 
 void MainWindow::setupUI() {
+    if (!currentUser) {
+        return;
+    }
+
     // Create menu bar
     QMenu* fileMenu = menuBar()->addMenu("&File");
 
