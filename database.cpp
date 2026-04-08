@@ -12,7 +12,7 @@ Database& Database::instance() {
 }
 
 bool Database::initDatabase() {
-    db = QSqlDatabase::addDatabase("QSQLITE", "social_media_connection");
+    db = QSqlDatabase::addDatabase("QSQLITE");
     db.setDatabaseName("socialchat.db");
 
     if (!db.open()) {
